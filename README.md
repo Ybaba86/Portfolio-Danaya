@@ -22,6 +22,6 @@ APP DANAYA est un système de gestion robuste conçu pour les entreprises de ven
 
 ## 📦 Comment tester la Démo
 1. Clonez le dépôt.
-2. Installez les dépendances : `pip install PyQt5 qtawesome bcrypt`
+2. Installez les dépendances : `pip install PyQt5==5.14.2 PyQt5-sip==12.8.1 bcrypt qtawesome pandas`
 3. Lancez l'application : `python main.py`
 4. **Login :** `admin` | **Mot de passe :** `admin`
