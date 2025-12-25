@@ -1,215 +1,223 @@
 import sys
-import os
-import bcrypt
 import qtawesome as qta
-import pandas as pd
 from PyQt5 import QtWidgets, QtCore, QtGui
-from PyQt5.QtWidgets import (QMessageBox, QMainWindow, QWidget, QVBoxLayout, 
+from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                              QHBoxLayout, QLabel, QPushButton, QTableWidget, 
-                             QTableWidgetItem, QHeaderView, QStackedWidget, QFrame)
+                             QTableWidgetItem, QHeaderView, QStackedWidget, QFrame, QLineEdit)
 
 # ==========================================
-# 1. DONNÉES DE SIMULATION (MOCK DB)
+# 1. BASE DE DONNÉES DE SIMULATION (MOCK DATA)
 # ==========================================
-# Ces données permettent à l'app de fonctionner sans MySQL
-MOCK_DATA = {
+ALL_DATA = {
+    "categories": [
+        {"ID": "CAT01", "Nom": "Céréales", "Description": "Riz, Maïs, Mil"},
+        {"ID": "CAT02", "Nom": "Huiles", "Description": "Huile végétale, Beurre"},
+        {"ID": "CAT03", "Nom": "Boissons", "Description": "Sodas, Eau minérale"}
+    ],
     "articles": [
-        {"Code": "RIZ001", "Nom": "Sac de Riz 50kg", "Prix": "25 000", "Stock": "120"},
-        {"Code": "HUI002", "Nom": "Huile 5L", "Prix": "6 500", "Stock": "45"}
+        {"Code": "RIZ001", "Nom": "Sac de Riz 50kg", "Prix": "25 000", "Stock": "120", "Cat": "Céréales"},
+        {"Code": "HUI002", "Nom": "Huile 5L", "Prix": "6 500", "Stock": "45", "Cat": "Huiles"},
+        {"Code": "EAU005", "Nom": "Pack Eau 1.5L", "Prix": "3 000", "Stock": "200", "Cat": "Boissons"}
+    ],
+    "ventes": [
+        {"Facture": "FAC-2024-001", "Client": "Moussa DIARRA", "Montant": "50 000", "Date": "2024-05-20"},
+        {"Facture": "FAC-2024-002", "Client": "Boutique Danaya", "Montant": "125 000", "Date": "2024-05-21"}
+    ],
+    "achats": [
+        {"BC": "ACH-99", "Fournisseur": "SODIMA SA", "Total": "1 200 000", "Statut": "Livré"},
+        {"BC": "ACH-100", "Fournisseur": "Mali Distribution", "Total": "450 000", "Statut": "En attente"}
     ],
     "clients": [
-        {"Nom": "Moussa DIARRA", "Tel": "76 00 11 22", "Type": "Détaillant", "Solde": "150 000"},
+        {"Nom": "Moussa DIARRA", "Tel": "76 00 11 22", "Type": "Détaillant", "Solde": "15 000"},
         {"Nom": "Boutique Danaya", "Tel": "65 44 33 22", "Type": "Grossiste", "Solde": "0"}
     ],
     "fournisseurs": [
-        {"Entreprise": "Mali Distribution", "Contact": "Sidi KONE", "Ville": "Bamako"},
-        {"Entreprise": "Sodima SA", "Contact": "Fatoumata TRAORE", "Ville": "Ségou"}
+        {"Nom": "SODIMA SA", "Contact": "Sidi KONE", "Ville": "Bamako", "Dette": "250 000"},
+        {"Nom": "Mali Distribution", "Contact": "Awa TRAORE", "Ville": "Ségou", "Dette": "0"}
     ],
-    "achats": [
-        {"Date": "2024-05-20", "Fournisseur": "Sodima SA", "Total": "1 250 000", "Statut": "Reçu"},
-        {"Date": "2024-05-21", "Fournisseur": "Mali Distribution", "Total": "450 000", "Statut": "En commande"}
+    "magasins": [
+        {"Nom": "Dépôt Principal", "Lieu": "ACI 2000", "Responsable": "Amadou"},
+        {"Nom": "Annexe Marché", "Lieu": "Grand Marché", "Responsable": "Fatima"}
+    ],
+    "ajustements": [
+        {"Date": "2024-12-20", "Article": "Sac de Riz 50kg", "Qte": "-5", "Type": "Casse", "Note": "Sac percé"},
+        {"Date": "2024-12-22", "Article": "Huile 5L", "Qte": "+10", "Type": "Entrée", "Note": "Inventaire"}
     ]
 }
 
 # ==========================================
-# 2. COMPOSANT : PAGE GÉNÉRIQUE
+# 2. COMPOSANTS DE L'INTERFACE
 # ==========================================
-class DataPage(QWidget):
-    """Classe de base pour créer des pages avec tableau et boutons d'action."""
-    def __init__(self, title, data_list, columns, icon_name):
+
+class DataTablePage(QWidget):
+    """Classe de base pour les pages avec tableau et recherche."""
+    def __init__(self, title, data, columns, color):
         super().__init__()
         layout = QVBoxLayout(self)
         
-        # En-tête de page
+        # Header
         header = QHBoxLayout()
-        icon_label = QLabel()
-        icon_label.setPixmap(qta.icon(icon_name, color="#2c3e50").pixmap(32, 32))
-        header.addWidget(icon_label)
-        header.addWidget(QLabel(f"<h1>{title}</h1>"))
+        header.addWidget(QLabel(f"<h1 style='color:{color}'>{title}</h1>"))
         header.addStretch()
-        
-        btn_add = QPushButton(" Ajouter Nouveau")
-        btn_add.setIcon(qta.icon('fa5s.plus-circle', color="white"))
-        btn_add.setStyleSheet("background-color: #27ae60; color: white; padding: 8px 15px; font-weight: bold;")
-        btn_add.clicked.connect(lambda: QMessageBox.information(self, "Démo", f"Fenêtre d'ajout {title} (Simulation)"))
+        btn_add = QPushButton(" + Nouveau")
+        btn_add.setStyleSheet(f"background-color: {color}; color: white; padding: 10px; font-weight: bold; border-radius: 5px;")
         header.addWidget(btn_add)
         layout.addLayout(header)
 
-        # Tableau
-        self.table = QTableWidget(len(data_list), len(columns))
+        # Search Bar
+        self.search = QLineEdit(placeholderText=f"🔍 Rechercher dans {title.lower()}...")
+        self.search.setStyleSheet("padding: 12px; border: 1px solid #ddd; border-radius: 5px; margin-bottom: 10px;")
+        self.search.textChanged.connect(self.filter_table)
+        layout.addWidget(self.search)
+
+        # Table
+        self.table = QTableWidget(len(data), len(columns))
         self.table.setHorizontalHeaderLabels(columns)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.table.setAlternatingRowColors(True)
-        self.table.setStyleSheet("QTableWidget { background-color: white; border: 1px solid #ddd; }")
         
-        # Remplissage
-        for row, item in enumerate(data_list):
-            for col, key in enumerate(columns):
-                self.table.setItem(row, col, QTableWidgetItem(str(item.get(key, ""))))
-        
+        self.populate_table(data)
         layout.addWidget(self.table)
 
-# ==========================================
-# 3. FENÊTRE PRINCIPALE (DASHBOARD)
-# ==========================================
-class DashboardWindow(QMainWindow):
-    def __init__(self, user_info):
-        super().__init__()
-        self.user_info = user_info
-        self.setWindowTitle("DANAYA ERP - Système de Gestion Intégré")
-        self.resize(1200, 800)
+    def populate_table(self, data):
+        for row, item in enumerate(data):
+            for col, key in enumerate(item.keys()):
+                self.table.setItem(row, col, QTableWidgetItem(str(item[key])))
 
-        # Widget Central et Layout Horizontal
-        self.central_widget = QWidget()
-        self.setCentralWidget(self.central_widget)
-        self.main_layout = QHBoxLayout(self.central_widget)
+    def filter_table(self):
+        search_text = self.search.text().lower()
+        for row in range(self.table.rowCount()):
+            match = False
+            for col in range(self.table.columnCount()):
+                item = self.table.item(row, col)
+                if item and search_text in item.text().lower():
+                    match = True
+                    break
+            self.table.setRowHidden(row, not match)
+
+class StockPage(DataTablePage):
+    """Page Stock avec alertes visuelles."""
+    def __init__(self):
+        super().__init__("État des Stocks", ALL_DATA["articles"], 
+                         ["Code", "Nom", "Prix", "Stock", "Catégorie"], "#2980b9")
+        self.apply_alerts()
+
+    def apply_alerts(self):
+        for row in range(self.table.rowCount()):
+            stock_item = self.table.item(row, 3)
+            if stock_item and int(stock_item.text()) < 50:
+                stock_item.setForeground(QtGui.QColor("#e74c3c"))
+                stock_item.setText(f"⚠️ {stock_item.text()} (Bas)")
+
+class DashboardPage(QWidget):
+    """Page d'accueil avec cartes de statistiques."""
+    def __init__(self):
+        super().__init__()
+        layout = QVBoxLayout(self)
+        layout.addWidget(QLabel("<h1>DANAYA APP - Vue d'ensemble</h1>"))
+        
+        grid = QHBoxLayout()
+        stats = [
+            ("Ventes Total", "2 450 000 F", "#9b59b6", "fa5s.chart-line"),
+            ("Stock Valeur", "12 800 000 F", "#2ecc71", "fa5s.boxes"),
+            ("Commandes", "145", "#3498db", "fa5s.shopping-cart"),
+            ("Alertes Stock", "4", "#e74c3c", "fa5s.exclamation-triangle")
+        ]
+        
+        for label, val, color, icon_name in stats:
+            card = QFrame()
+            card.setStyleSheet(f"background-color: {color}; border-radius: 12px; min-width: 220px; padding: 20px;")
+            l = QVBoxLayout(card)
+            
+            icon_label = QLabel()
+            icon_label.setPixmap(qta.icon(icon_name, color="white").pixmap(45, 45))
+            icon_label.setAlignment(QtCore.Qt.AlignCenter)
+            l.addWidget(icon_label)
+            
+            l.addWidget(QLabel(f"<center><font color='white' size='4'>{label}</font></center>"))
+            l.addWidget(QLabel(f"<center><font color='white' size='6'><b>{val}</b></font></center>"))
+            grid.addWidget(card)
+        
+        layout.addLayout(grid)
+        layout.addStretch()
+        layout.addWidget(QLabel("<center><b>Utilisez le menu à gauche pour naviguer dans les outils de gestion.</b></center>"))
+
+# ==========================================
+# 3. FENÊTRE PRINCIPALE
+# ==========================================
+
+class MainWindow(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("DANAYA ERP v1.0")
+        self.resize(1280, 850)
+
+        central_widget = QWidget()
+        self.setCentralWidget(central_widget)
+        self.main_layout = QHBoxLayout(central_widget)
         self.main_layout.setContentsMargins(0, 0, 0, 0)
         self.main_layout.setSpacing(0)
 
-        # --- BARRE LATÉRALE (SIDEBAR) ---
+        # Sidebar
         self.sidebar = QFrame()
-        self.sidebar.setFixedWidth(220)
-        self.sidebar.setStyleSheet("background-color: #2c3e50; border: none;")
+        self.sidebar.setFixedWidth(250)
+        self.sidebar.setStyleSheet("background-color: white; border-right: 1px solid #ddd;")
         self.sidebar_layout = QVBoxLayout(self.sidebar)
-        
-        # Logo & Titre
-        logo_label = QLabel("DANAYA ERP")
-        logo_label.setStyleSheet("color: white; font-size: 20px; font-weight: bold; margin: 20px 0;")
-        logo_label.setAlignment(QtCore.Qt.AlignCenter)
-        self.sidebar_layout.addWidget(logo_label)
 
-        # Boutons de Navigation
-        self.nav_buttons = {}
-        menu_items = [
-            (" Ventes", "fa5s.shopping-cart", 0),
-            (" Achats", "fa5s.truck", 1),
-            (" Articles", "fa5s.cubes", 2),
-            (" Clients", "fa5s.users", 3),
-            (" Fournisseurs", "fa5s.address-book", 4)
+        logo = QLabel("DANAYA APP")
+        logo.setStyleSheet("font-size: 26px; font-weight: bold; color: #2c3e50; padding: 25px 0;")
+        logo.setAlignment(QtCore.Qt.AlignCenter)
+        self.sidebar_layout.addWidget(logo)
+
+        self.container = QStackedWidget()
+        
+        # Menu Configuration (Texte, Icone, Couleur, Widget)
+        self.menu_items = [
+            (" Accueil", "fa5s.home", "#7f8c8d", DashboardPage()),
+            (" Catégories", "fa5s.th-list", "#27ae60", DataTablePage("Catégories", ALL_DATA["categories"], ["ID", "Nom", "Description"], "#27ae60")),
+            (" Articles", "fa5s.cubes", "#2ecc71", DataTablePage("Catalogue Articles", ALL_DATA["articles"], ["Code", "Nom", "Prix", "Stock", "Famille"], "#2ecc71")),
+            (" Stock", "fa5s.box", "#2980b9", StockPage()),
+            (" Ajustement", "fa5s.tools", "#3498db", DataTablePage("Historique Ajustements", ALL_DATA["ajustements"], ["Date", "Article", "Qte", "Type", "Note"], "#3498db")),
+            (" Ventes", "fa5s.shopping-cart", "#9b59b6", DataTablePage("Journal des Ventes", ALL_DATA["ventes"], ["Facture", "Client", "Montant", "Date"], "#9b59b6")),
+            (" Achats", "fa5s.truck", "#e67e22", DataTablePage("Achats Fournisseurs", ALL_DATA["achats"], ["BC", "Fournisseur", "Total", "Statut"], "#e67e22")),
+            (" Fournisseurs", "fa5s.address-book", "#d35400", DataTablePage("Répertoire Fournisseurs", ALL_DATA["fournisseurs"], ["Nom", "Contact", "Ville", "Solde"], "#d35400")),
+            (" Clients", "fa5s.users", "#8e44ad", DataTablePage("Fichier Clients", ALL_DATA["clients"], ["Nom", "Tel", "Type", "Solde"], "#8e44ad")),
+            (" Magasins", "fa5s.warehouse", "#95a5a6", DataTablePage("Gestion Dépôts", ALL_DATA["magasins"], ["Nom", "Lieu", "Responsable"], "#95a5a6")),
         ]
 
-        for text, icon, index in menu_items:
+        for i, (text, icon, color, page_widget) in enumerate(self.menu_items):
             btn = QPushButton(text)
             btn.setIcon(qta.icon(icon, color="white"))
             btn.setCheckable(True)
             btn.setAutoExclusive(True)
-            btn.setStyleSheet("""
-                QPushButton { color: white; border: none; padding: 15px; text-align: left; font-size: 14px; }
-                QPushButton:hover { background-color: #34495e; }
-                QPushButton:checked { background-color: #3498db; font-weight: bold; }
+            btn.setStyleSheet(f"""
+                QPushButton {{ background-color: {color}; color: white; border: none; padding: 13px; 
+                             text-align: left; font-weight: bold; margin: 3px 15px; border-radius: 6px; font-size: 13px; }}
+                QPushButton:hover {{ background-color: #34495e; }}
+                QPushButton:checked {{ border: 2px solid #333; background-color: #2c3e50; }}
             """)
-            btn.clicked.connect(lambda checked, idx=index: self.container.setCurrentIndex(idx))
+            btn.clicked.connect(lambda checked, idx=i: self.container.setCurrentIndex(idx))
             self.sidebar_layout.addWidget(btn)
-            self.nav_buttons[index] = btn
+            self.container.addWidget(page_widget)
 
         self.sidebar_layout.addStretch()
-        
-        # Bouton Déconnexion
-        btn_logout = QPushButton(" Déconnexion")
-        btn_logout.setIcon(qta.icon('fa5s.power-off', color="white"))
-        btn_logout.setStyleSheet("color: #e74c3c; border: none; padding: 15px; text-align: left;")
-        btn_logout.clicked.connect(self.close)
-        self.sidebar_layout.addWidget(btn_logout)
+        self.sidebar_layout.addWidget(QLabel("<center>© 2025 Danaya Boutique</center>"))
 
         self.main_layout.addWidget(self.sidebar)
-
-        # --- ZONE DE CONTENU (STACKED WIDGET) ---
-        self.container = QStackedWidget()
         self.main_layout.addWidget(self.container)
 
-        # Création des pages
-        self.container.addWidget(DataPage("Gestion des Ventes", [], ["Facture", "Client", "Montant", "Date"], "fa5s.shopping-cart"))
-        self.container.addWidget(DataPage("Gestion des Achats", MOCK_DATA["achats"], ["Date", "Fournisseur", "Total", "Statut"], "fa5s.truck"))
-        self.container.addWidget(DataPage("Catalogue Articles", MOCK_DATA["articles"], ["Code", "Nom", "Prix", "Stock"], "fa5s.cubes"))
-        self.container.addWidget(DataPage("Répertoire Clients", MOCK_DATA["clients"], ["Nom", "Tel", "Type", "Solde"], "fa5s.users"))
-        self.container.addWidget(DataPage("Registre Fournisseurs", MOCK_DATA["fournisseurs"], ["Entreprise", "Contact", "Ville"], "fa5s.address-book"))
-
-        # Sélectionner la première page par défaut
-        self.nav_buttons[0].setChecked(True)
-        self.container.setCurrentIndex(0)
-
 # ==========================================
-# 4. FENÊTRE DE CONNEXION (LOGIN)
-# ==========================================
-class LoginWindow(QMainWindow):
-    def __init__(self):
-        super().__init__()
-        self.setWindowTitle("Connexion DANAYA")
-        self.setFixedSize(400, 500)
-        self.init_ui()
-
-    def init_ui(self):
-        widget = QWidget()
-        layout = QVBoxLayout(widget)
-        
-        # Style pour le login
-        layout.setContentsMargins(40, 40, 40, 40)
-        layout.setSpacing(15)
-
-        title = QLabel("<h2>DANAYA</h2><p>Gestion Commerciale</p>")
-        title.setAlignment(QtCore.Qt.AlignCenter)
-        layout.addWidget(title)
-
-        self.user_input = QtWidgets.QLineEdit(placeholderText="Identifiant")
-        self.pass_input = QtWidgets.QLineEdit(placeholderText="Mot de passe")
-        self.pass_input.setEchoMode(QtWidgets.QLineEdit.Password)
-        
-        style_input = "padding: 12px; border: 1px solid #ddd; border-radius: 5px; font-size: 14px;"
-        self.user_input.setStyleSheet(style_input)
-        self.pass_input.setStyleSheet(style_input)
-        
-        layout.addWidget(self.user_input)
-        layout.addWidget(self.pass_input)
-
-        btn_login = QPushButton(" SE CONNECTER")
-        btn_login.setIcon(qta.icon('fa5s.sign-in-alt', color="white"))
-        btn_login.setStyleSheet("background-color: #3498db; color: white; padding: 12px; font-weight: bold; border-radius: 5px;")
-        btn_login.clicked.connect(self.auth)
-        layout.addWidget(btn_login)
-        
-        layout.addWidget(QLabel("<center> admin / admin </center>"))
-        self.setCentralWidget(widget)
-
-    def auth(self):
-        if self.user_input.text() == "admin" and self.pass_input.text() == "admin":
-            self.dashboard = DashboardWindow({"full_name": "Youssouf BOIRE", "role": "admin"})
-            self.dashboard.show()
-            self.close()
-        else:
-            QMessageBox.warning(self, "Erreur", "Identifiants incorrects.")
-
-# ==========================================
-# 5. DÉMARRAGE
+# 4. EXECUTION
 # ==========================================
 if __name__ == "__main__":
-    app = QtWidgets.QApplication(sys.argv)
+    app = QApplication(sys.argv)
     app.setStyle("Fusion")
     
-    # Palette de couleurs "Dark/Modern"
+    # Palette Modernisée
     palette = QtGui.QPalette()
-    palette.setColor(QtGui.QPalette.Window, QtGui.QColor("#f5f6fa"))
+    palette.setColor(QtGui.QPalette.Window, QtGui.QColor("#ffffff"))
     app.setPalette(palette)
 
-    login = LoginWindow()
-    login.show()
+    window = MainWindow()
+    window.show()
     sys.exit(app.exec_())
